@@ -1,0 +1,6 @@
+{
+  "name": "TradeSim: $100 to $1M",
+  "description": "A trading simulator powered by TradingView and Gemini AI. Start with $100 and trade US stocks to reach $1,000,000.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

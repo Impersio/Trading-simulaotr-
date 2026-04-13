@@ -1,0 +1,46 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile and portfolio state",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "balance": { "type": "number" },
+        "holdings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "symbol": { "type": "string" },
+              "shares": { "type": "number" },
+              "averagePrice": { "type": "number" }
+            }
+          }
+        },
+        "transactions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "symbol": { "type": "string" },
+              "type": { "type": "string", "enum": ["BUY", "SELL"] },
+              "shares": { "type": "number" },
+              "price": { "type": "number" },
+              "timestamp": { "type": "number" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "balance", "holdings", "transactions", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Stores user profiles and their trading portfolio"
+    }
+  }
+}
