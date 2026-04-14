@@ -4,6 +4,7 @@ import axios from 'axios';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import dotenv from 'dotenv';
+import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
 
@@ -15,6 +16,37 @@ async function startServer() {
   app.use(express.json());
 
   // API routes
+  app.post('/api/suggestions', async (req, res) => {
+    try {
+      const { portfolio, currentSymbol, currentPrice } = req.body;
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      
+      const prompt = `
+        You are an expert trading assistant. The user is playing a trading simulator where they start with $1,000 and try to reach $1,000,000.
+        
+        Current Portfolio:
+        - Cash Balance: $${portfolio.balance.toFixed(2)}
+        - Holdings: ${portfolio.holdings.length > 0 ? portfolio.holdings.map((h: any) => `${h.shares} shares of ${h.symbol} @ $${h.averagePrice.toFixed(2)}`).join(', ') : 'None'}
+        
+        Currently Viewing: ${currentSymbol} at $${currentPrice.toFixed(2)}
+        
+        Provide a brief, engaging, and educational suggestion for the user. Keep it under 3 sentences. 
+        Analyze their portfolio and the current stock they are viewing. Give them a tip on risk management or a potential strategy.
+        Do not give direct financial advice, frame it as educational for the simulator.
+      `;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+      });
+
+      res.json({ suggestion: response.text });
+    } catch (error) {
+      console.error('Error generating suggestion:', error);
+      res.status(500).json({ error: 'Failed to generate suggestion' });
+    }
+  });
+
   app.get('/api/quote/:symbol', async (req, res) => {
     try {
       const { symbol } = req.params;
