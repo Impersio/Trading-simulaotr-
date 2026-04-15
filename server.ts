@@ -5,15 +5,99 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+import fs from 'fs/promises';
 
 dotenv.config();
 
+const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-dev-key';
+const DB_FILE = 'database.json';
+
+let db = { users: {} as Record<string, any> };
+
+async function initDb() {
+  try {
+    const data = await fs.readFile(DB_FILE, 'utf-8');
+    db = JSON.parse(data);
+  } catch (e) {
+    await fs.writeFile(DB_FILE, JSON.stringify(db));
+  }
+}
+
+async function saveDb() {
+  await fs.writeFile(DB_FILE, JSON.stringify(db, null, 2));
+}
+
+// Middleware to authenticate token
+const authenticateToken = (req: any, res: any, next: any) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (token == null) return res.sendStatus(401);
+
+  jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+    if (err) return res.sendStatus(403);
+    req.user = user;
+    next();
+  });
+};
+
 async function startServer() {
+  await initDb();
   const app = express();
   const PORT = 3000;
 
   app.use(cors());
   app.use(express.json());
+
+  // Auth Routes
+  app.post('/api/auth/signup', async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+    if (db.users[email]) return res.status(400).json({ error: 'User already exists' });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    db.users[email] = {
+      password: hashedPassword,
+      portfolio: { balance: 1000, holdings: [], transactions: [] }
+    };
+    await saveDb();
+
+    const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, user: { email } });
+  });
+
+  app.post('/api/auth/signin', async (req, res) => {
+    const { email, password } = req.body;
+    const user = db.users[email];
+    if (!user) return res.status(400).json({ error: 'User not found' });
+
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) return res.status(400).json({ error: 'Invalid password' });
+
+    const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, user: { email } });
+  });
+
+  app.get('/api/auth/me', authenticateToken, (req: any, res: any) => {
+    res.json({ user: { email: req.user.email } });
+  });
+
+  // Portfolio Routes
+  app.get('/api/portfolio', authenticateToken, (req: any, res: any) => {
+    const user = db.users[req.user.email];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ portfolio: user.portfolio });
+  });
+
+  app.put('/api/portfolio', authenticateToken, async (req: any, res: any) => {
+    const user = db.users[req.user.email];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    
+    user.portfolio = req.body.portfolio;
+    await saveDb();
+    res.json({ success: true });
+  });
 
   // API routes
   app.post('/api/suggestions', async (req, res) => {

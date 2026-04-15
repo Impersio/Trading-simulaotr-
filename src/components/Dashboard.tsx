@@ -8,9 +8,7 @@ import { getQuote } from '../services/api';
 import { Search, TrendingUp, DollarSign, Target, Activity, LogOut } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { SignIn } from './SignIn';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
-import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
+import axios from 'axios';
 
 const INITIAL_BALANCE = 1000;
 const TARGET_BALANCE = 1000000;
@@ -24,25 +22,24 @@ export const Dashboard: React.FC = () => {
   const [portfolioValue, setPortfolioValue] = useState<number>(0);
   const [isSyncing, setIsSyncing] = useState(true);
 
-  // Fetch portfolio from Firestore
+  // Fetch portfolio from backend
   useEffect(() => {
     if (!user) return;
     
-    const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setPortfolio({
-          balance: data.balance || INITIAL_BALANCE,
-          holdings: data.holdings || [],
-          transactions: data.transactions || []
-        });
+    const fetchPortfolio = async () => {
+      try {
+        const res = await axios.get('/api/portfolio');
+        if (res.data.portfolio) {
+          setPortfolio(res.data.portfolio);
+        }
+      } catch (err) {
+        console.error("Failed to fetch portfolio", err);
+      } finally {
+        setIsSyncing(false);
       }
-      setIsSyncing(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
-    });
-
-    return () => unsubscribe();
+    };
+    
+    fetchPortfolio();
   }, [user]);
 
   // Fetch current price for AI and portfolio value
@@ -80,16 +77,12 @@ export const Dashboard: React.FC = () => {
     return () => clearInterval(interval);
   }, [portfolio]);
 
-  const updateFirestore = async (newState: PortfolioState) => {
+  const updateBackend = async (newState: PortfolioState) => {
     if (!user) return;
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        balance: newState.balance,
-        holdings: newState.holdings,
-        transactions: newState.transactions
-      });
+      await axios.put('/api/portfolio', { portfolio: newState });
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
+      console.error("Error updating portfolio:", error);
     }
   };
 
@@ -98,7 +91,7 @@ export const Dashboard: React.FC = () => {
       const newState = { balance: INITIAL_BALANCE, holdings: [], transactions: [] };
       setPortfolio(newState);
       setPortfolioValue(INITIAL_BALANCE);
-      updateFirestore(newState);
+      updateBackend(newState);
     }
   };
 
@@ -119,7 +112,7 @@ export const Dashboard: React.FC = () => {
       ].slice(0, 50)
     };
     setPortfolio(newState);
-    updateFirestore(newState);
+    updateBackend(newState);
   };
 
   const handleSearch = (e: React.FormEvent) => {
@@ -172,7 +165,7 @@ export const Dashboard: React.FC = () => {
     };
 
     setPortfolio(newState);
-    updateFirestore(newState);
+    updateBackend(newState);
   };
 
   if (loading) {
